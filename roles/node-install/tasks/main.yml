@@ -7,11 +7,60 @@
 - name: download installation file from the bootstrap
   get_url: url="http://{{ bootstrap_ip }}:{{ port_webserver }}/dcos_install.sh" dest={{ path_tmp }}/dcos_install.sh mode=0440 force=yes
 
-- import_tasks: master.yml
+- name: install master
+  shell: bash dcos_install.sh master
+  args:
+    chdir: "{{ path_tmp }}"
+  ignore_errors: yes
   when: "'masters' in group_names"
 
-- import_tasks: agent.yml
+- name: read availability zone
+  uri: url="http://169.254.169.254/latest/meta-data/placement/availability-zone" return_content=yes
+  register: az_id
+  tags: register
+  when: 
+    - exhibitor == "aws_s3"
+    - "'agents' in group_names"
+
+- name: set mesos attribute for availability zone for agent
+  lineinfile:
+    dest: /var/lib/dcos/mesos-slave-common
+    regexp: ^MESOS_ATTRIBUTES='az_id
+    line: "MESOS_ATTRIBUTES='az_id:{{ az_id.content }};'"
+    create: yes
+  when: 
+    - exhibitor == "aws_s3"
+    - "'agents' in group_names"
+
+- name: install agent
+  shell: bash dcos_install.sh slave
+  args:
+    chdir: "{{ path_tmp }}"
+  ignore_errors: yes
   when: "'agents' in group_names"
 
-- import_tasks: agent_public.yml
+- name: read availability zone
+  uri: url="http://169.254.169.254/latest/meta-data/placement/availability-zone" return_content=yes
+  register: az_id
+  tags: register
+  when: 
+    - exhibitor == "aws_s3"
+    - "'agents_public' in group_names"
+
+- name: set mesos attribute for availability zone for public agent
+  lineinfile:
+    dest: /var/lib/dcos/mesos-slave-common
+    regexp: ^MESOS_ATTRIBUTES='az_id
+    line: "MESOS_ATTRIBUTES='az_id:{{ az_id.content }};public_ip:true;'"
+    create: yes
+  when: 
+    - exhibitor == "aws_s3"
+    - "'agents_public' in group_names"
+
+- name: install public agent
+  shell: bash dcos_install.sh slave_public
+  args:
+    chdir: "{{ path_tmp }}"
+  ignore_errors: yes
   when: "'agents_public' in group_names"
+
